@@ -4,32 +4,64 @@
 
 ;;; "zpackage" goes here. Hacks and glory await!
 
-(defgeneric make-sym (name)
-  (:documentation
-   "Create a new symbol named by NAME with no home pack."))
+;;; Clone of the CL symbol/package interface
+(defgeneric zmake-symbol (sym-name))
+(defgeneric zsymbol-name (sym))
+(defgeneric zsymbol-package (sym))
+(defgeneric (setf %zsymbol-package) (new-pack sym))
 
-(defgeneric sym-package (sym)
-  (:documentation
-   "Return the home pack of SYM."))
+(defgeneric zfind-symbol (sym-name pack))
+(defgeneric zimport (sym pack))
+(defgeneric zexport (sym pack))
+(defgeneric zunexport (sym pack))
+(defgeneric zintern (sym-name pack))
+(defgeneric zunintern (sym pack))
+(defgeneric zshadow (sym-name pack))
+(defgeneric zshadowing-import (sym pack))
 
-(defgeneric (setf %sym-pack) (pack sym)
-  (:documentation
-   "Set the home pack of SYM."))
+(defgeneric zmake-package (pack-name))
+(defgeneric zpackage-name (pack))
+(defgeneric zfind-package (pack-name))
+(defgeneric zuse-package (source-pack target-pack))
+(defgeneric zunuse-package (source-pack target-pack))
+(defgeneric zpackage-use-list (pack))
+(defgeneric (setf %zpackage-use-list) (new-list pack))
+(defgeneric zpackage-used-by-list (pack))
+(defgeneric (setf %zpackage-used-by-list) (new-list pack))
+(defgeneric zdelete-package (pack-name))
 
-(defgeneric sym-name (sym)
-  (:documentation
-   "Return the name of SYM as a string."))
 
-(defclass sym ()
-  ((name
-    :initarg :name
-    :reader sym-name)
-   (pack
-    :initarg :pack
-    :reader sym-pack
-    :writer (setf %sym-pack)))
-  (:default-initargs
-   :pack nil))
+;;; Sym tables
+(defgeneric make-sym-table ())
+(defgeneric tget (sym-name table))
+(defgeneric tput (sym table))
+(defgeneric tremove (sym table))
+(defgeneric tmember (sym table))
+(defgeneric tensure (sym table))
+(defgeneric tremove-if-member (sym table))
+(defgeneric tmap-syms (fun table))
+
+
+;;; Pack management
+(defvar *packs* (make-hash-table :test 'equal))
+
+(defgeneric present-table (pack))
+(defgeneric shadowed-table (pack))
+(defgeneric external-table (pack))
+
+(defgeneric accessiblep (sym pack))
+(defgeneric inheritedp (sym pack))
+
+(defgeneric shadowedp (sym pack))
+(defgeneric (setf shadowedp) (new-value sym pack))
+
+(defgeneric externalp (sym pack))
+(defgeneric (setf externalp) (new-value sym pack))
+
+(defgeneric presentp (sym pack))
+(defgeneric (setf presentp) (new-value sym pack))
+
+
 
 
 
@@ -162,31 +194,7 @@
 
 (defgeneric accessiblep (sym pack))
 
-(defclass pack ()
-  ((name
-    :initarg :name
-    :reader name)
-   (external
-    :initarg :external
-    :reader external)
-   (present
-    :initarg :present
-    :reader present)
-   (shadowed
-    :initarg :shadowed
-    :reader shadowed)
-   (used-packs
-    :initarg :used-packs
-    :accessor used-packs)
-   (used-by-packs
-    :initarg :used-by-packs
-    :accessor used-by-packs))
-  (:default-initargs
-   :external (make-instance 'symbol-table)
-   :present (make-instance 'symbol-table)
-   :shadowed (make-instance 'symbol-table)
-   :used-packs nil
-   :used-by-packs nil))
+
 
 (defmethod print-object ((pack pack) stream)
   (print-unreadable-object (pack stream :type t)
