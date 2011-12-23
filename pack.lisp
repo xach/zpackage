@@ -12,9 +12,9 @@
    (present-table
     :initarg :present-table
     :reader present-table)
-   (shadowed-table
-    :initarg :shadowed-table
-    :reader shadowed-table)
+   (shadowing-table
+    :initarg :shadowing-table
+    :reader shadowing-table)
    (used-packs
     :initarg :used-packs
     :reader zpackage-use-list
@@ -26,7 +26,7 @@
   (:default-initargs
    :external-table (make-sym-table)
    :present-table (make-sym-table)
-   :shadowed-table (make-sym-table)
+   :shadowing-table (make-sym-table)
    :used-packs nil
    :used-by-packs nil))
 
@@ -51,7 +51,7 @@
   (let (sym)
     (cond ((setf sym (tget sym-name (external-table pack)))
            (values sym :external))
-          ((setf sym (tget sym-name (shadowed-table pack)))
+          ((setf sym (tget sym-name (shadowing-table pack)))
            (values sym :internal))
           ((setf sym (some (lambda (used-pack)
                              (tget sym-name (external-table used-pack)))
@@ -68,17 +68,15 @@
       (error "Conflict: importing ~A into ~A conflicts with ~A"
              sym pack existing-sym))))
 
-(defmethod zimport (sym pack)
-  (check-import-conflict sym pack)
-  ;; Why not use TENSURE here? Because of the spec of CL:IMPORT: "If
-  ;; the symbol is already present in the importing package, import
-  ;; has no effect." I interpret that to mean that it should not
-  ;; change the symbol-package of symbol, even if it's nil, when the
-  ;; symbol is already present.
-  (unless (presentp sym pack)
-    (tput sym (present-table pack))
+(defun zimport-without-checks (sym pack)
+  (tput sym (present-table pack))
     (unless (zsymbol-package sym)
       (setf (%zsymbol-package sym) pack)))
+
+(defmethod zimport (sym pack)
+  (check-import-conflict sym pack)
+  (unless (presentp sym pack)
+    (zimport-without-checks sym pack))
   t)
 
 (defmethod check-export-conflict (sym pack)
@@ -126,9 +124,9 @@
 
 (defun zunintern-without-checks (sym pack)
   (tremove-if-member sym (external-table pack))
-  (tremove-if-member sym (shadowed-table pack))
+  (tremove-if-member sym (shadowing-table pack))
   (tremove-if-member sym (present-table pack))
-  (when (eq (symbol-package sym) pack)
+  (when (eq (zsymbol-package sym) pack)
     (setf (%zsymbol-package sym) nil)))
 
 (defmethod zunintern (sym pack)
@@ -138,16 +136,11 @@
     t))
 
 (defmethod zshadow (sym-name pack)
-  (multiple-value-bind (existing-sym type)
-      (zfind-symbol sym-name pack)
-    (cond ((null type)
-           (let ((sym (zmake-symbol sym-name)))
-             (zimport sym pack)
-             (setf (shadowedp sym pack) t)))
-          (t
-           (when (eql type :inherited)
-             (zimport existing-sym pack))
-           (tensure existing-sym (shadowed-table pack))))
+  (let ((sym (tget sym-name (present-table pack))))
+    (unless sym
+      (setf sym (zmake-symbol sym-name))
+      (zimport-without-checks sym pack))
+    (tensure sym (shadowing-table pack))
     t))
 
 (defmethod zshadowing-import (sym pack)
@@ -161,7 +154,10 @@
          (unless (eq existing-sym sym)
            (zunintern-without-checks existing-sym pack)
            (zimport sym pack))
-         (tensure sym (shadowed-table pack)))))))
+         (tensure sym (shadowing-table pack)))))))
+
+(defmethod zpackage-shadowing-symbols (pack)
+  (tmembers (shadowing-table pack)))
 
 (defmacro zdo-external-symbols ((var pack) &body body)
   `(tmap-syms (lambda (,var)
@@ -174,7 +170,7 @@
                                       using-pack)))
        (when (and existing-sym
                   (not (eq inherited-sym existing-sym))
-                  (not (shadowedp existing-sym using-pack)))
+                  (not (shadowingp existing-sym using-pack)))
          (error "Conflict: Inheriting ~A from ~A conflicts with ~A in ~A"
                 inherited-sym
                 used-pack
@@ -203,8 +199,8 @@
 (defmethod externalp (sym pack)
   (tmember sym (external-table pack)))
 
-(defmethod shadowedp (sym pack)
-  (tmember sym (shadowed-table pack)))
+(defmethod shadowingp (sym pack)
+  (tmember sym (shadowing-table pack)))
 
 (defmethod presentp (sym pack)
   (tmember sym (present-table pack)))

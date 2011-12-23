@@ -17,6 +17,7 @@
 (defgeneric zunintern (sym pack))
 (defgeneric zshadow (sym-name pack))
 (defgeneric zshadowing-import (sym pack))
+(defgeneric zpackage-shadowing-symbols (pack))
 
 (defgeneric zmake-package (pack-name))
 (defgeneric zpackage-name (pack))
@@ -42,17 +43,18 @@
 (defgeneric tensure (sym table))
 (defgeneric tremove-if-member (sym table))
 (defgeneric tmap-syms (fun table))
+(defgeneric tmembers (table))
 
 ;;; Pack management
 (defvar *packs* (make-hash-table :test 'equal))
 
 (defgeneric present-table (pack))
-(defgeneric shadowed-table (pack))
+(defgeneric shadowing-table (pack))
 (defgeneric external-table (pack))
 
 (defgeneric accessiblep (sym pack))
 (defgeneric externalp (sym pack))
-(defgeneric shadowedp (sym pack))
+(defgeneric shadowingp (sym pack))
 (defgeneric presentp (sym pack))
 
 (defgeneric check-import-conflict (sym pack))

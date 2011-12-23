@@ -9,7 +9,7 @@
    (pack
     :initarg :pack
     :reader zsymbol-package
-    :writer (setf %sym-pack)))
+    :writer (setf %zsymbol-package)))
   (:default-initargs
    :pack nil))
 
@@ -25,4 +25,4 @@
              (format stream "~A~:[::~;:~]~A"
                      (zpackage-name pack)
                      (externalp sym pack)
-                     (zsymbol-name pack)))))))
+                     (zsymbol-name sym)))))))

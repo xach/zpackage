@@ -46,3 +46,10 @@
              (declare (ignore sym-name))
              (funcall fun sym))
            (name-table table)))
+
+(defmethod tmembers (table)
+  (let ((members '()))
+    (tmap-syms (lambda (sym)
+                 (push sym members))
+               table)
+    members))
