@@ -95,14 +95,14 @@
   (check-export-conflict sym pack)
   (unless (presentp sym pack)
     (zimport sym pack))
-  (tensure sym (external-table pack))
+  (tput sym (external-table pack))
   t)
 
 (defmethod zunexport (sym pack)
   (unless (accessiblep sym pack)
     (error "~A is not accessible in ~A"
            sym pack))
-  (tremove-if-member sym (external-table pack))
+  (tremove sym (external-table pack))
   t)
 
 (defmethod zintern (sym-name pack)
@@ -124,9 +124,9 @@
             (setf first-existing-sym existing-sym))))))
 
 (defun zunintern-without-checks (sym pack)
-  (tremove-if-member sym (external-table pack))
-  (tremove-if-member sym (shadowing-table pack))
-  (tremove-if-member sym (present-table pack))
+  (tremove sym (external-table pack))
+  (tremove sym (shadowing-table pack))
+  (tremove sym (present-table pack))
   (when (eq (zsymbol-package sym) pack)
     (setf (%zsymbol-package sym) nil)))
 
@@ -141,7 +141,7 @@
     (unless sym
       (setf sym (zmake-symbol sym-name))
       (zimport-without-checks sym pack))
-    (tensure sym (shadowing-table pack))
+    (tput sym (shadowing-table pack))
     t))
 
 (defmethod zshadowing-import (sym pack)
@@ -155,7 +155,7 @@
          (unless (eq existing-sym sym)
            (zunintern-without-checks existing-sym pack)
            (zimport sym pack))
-         (tensure sym (shadowing-table pack)))))))
+         (tput sym (shadowing-table pack)))))))
 
 (defmethod zpackage-shadowing-symbols (pack)
   (tmembers (shadowing-table pack)))
