@@ -26,6 +26,7 @@
     :reader zpackage-used-by-list
     :writer (setf used-by-packs)))
   (:default-initargs
+   :name (error "A package name is required")
    :external-table (make-sym-table)
    :present-table (make-sym-table)
    :shadowing-table (make-sym-table)
@@ -36,8 +37,82 @@
   (print-unreadable-object (pack stream :type t)
     (prin1 (zpackage-name pack) stream)))
 
-(defmethod zfind-package (pack-name)
-  (values (gethash pack-name *packs*)))
+(defmethod zpackage-shadowing-symbols (pack)
+  (tmembers (shadowing-table pack)))
+
+
+(defmethod accessiblep (sym pack)
+  (let ((existing-sym (zfind-symbol (zsymbol-name sym) pack)))
+    (eq existing-sym sym)))
+
+(defmethod externalp (sym pack)
+  (tmember sym (external-table pack)))
+
+(defmethod shadowingp (sym pack)
+  (tmember sym (shadowing-table pack)))
+
+(defmethod presentp (sym pack)
+  (tmember sym (present-table pack)))
+
+
+(defmethod check-import-conflict (sym pack)
+  (let ((existing-sym (zfind-symbol (zsymbol-name sym) pack)))
+    (when (and existing-sym (not (eq existing-sym sym)))
+      (error "Conflict: importing ~A into ~A conflicts with ~A"
+             sym pack existing-sym))))
+
+(defmacro zdo-external-symbols ((var pack) &body body)
+  `(tmap-syms (lambda (,var)
+                ,@body)
+              (external-table ,pack)))
+
+(defmethod check-inherit-conflict (used-pack using-pack)
+  (zdo-external-symbols (inherited-sym used-pack)
+    (let ((existing-sym (zfind-symbol (zsymbol-name inherited-sym)
+                                      using-pack)))
+       (when (and existing-sym
+                  (not (eq inherited-sym existing-sym))
+                  (not (shadowingp existing-sym using-pack)))
+         (error "Conflict: Inheriting ~A from ~A conflicts with ~A in ~A"
+                inherited-sym
+                used-pack
+                existing-sym
+                using-pack)))))
+
+(defmethod check-export-conflict (sym pack)
+  (let ((sym-name (zsymbol-name sym)))
+    (dolist (using-pack (zpackage-used-by-list pack))
+      (let ((existing-sym (zfind-symbol sym-name using-pack)))
+        (when existing-sym
+          (unless (eq existing-sym sym)
+            (error "Conflict: exporting ~A conflicts with ~A in ~A"
+                   sym existing-sym using-pack)))))))
+
+(defmethod check-unintern-conflict (sym pack)
+  (let ((sym-name (zsymbol-name sym))
+        (first-existing-sym nil))
+    (dolist (used-pack (zpackage-use-list pack))
+      (let ((existing-sym (zfind-symbol sym-name used-pack)))
+        (if first-existing-sym
+            (unless (eq existing-sym first-existing-sym)
+              (error "Conflict: uninterning ~A would lead to conflict ~
+                      between ~A and ~A"
+                     sym first-existing-sym existing-sym))
+            (setf first-existing-sym existing-sym))))))
+
+
+(defmethod zimport-without-checks (sym pack)
+  (tput sym (present-table pack))
+  (unless (zsymbol-package sym)
+    (setf (sym-pack sym) pack)))
+
+(defmethod zunintern-without-checks (sym pack)
+  (tremove sym (external-table pack))
+  (tremove sym (shadowing-table pack))
+  (tremove sym (present-table pack))
+  (when (eq (zsymbol-package sym) pack)
+    (setf (sym-pack sym) nil)))
+
 
 (defmethod zmake-package (pack-name)
   (when (zfind-package pack-name)
@@ -46,8 +121,12 @@
   (setf (gethash pack-name *packs*)
         (make-instance 'pack :name pack-name)))
 
+(defmethod zfind-package (pack-name)
+  (values (gethash pack-name *packs*)))
+
 (defmethod zdelete-package (pack)
   (remhash (zpackage-name pack) *packs*))
+
 
 (defmethod zfind-symbol (sym-name pack)
   (let (sym)
@@ -64,47 +143,10 @@
           (t
            (values nil nil)))))
 
-(defmethod check-import-conflict (sym pack)
-  (let ((existing-sym (zfind-symbol (zsymbol-name sym) pack)))
-    (when (and existing-sym (not (eq existing-sym sym)))
-      (error "Conflict: importing ~A into ~A conflicts with ~A"
-             sym pack existing-sym))))
-
-(defun zimport-without-checks (sym pack)
-  (tput sym (present-table pack))
-  (unless (zsymbol-package sym)
-    (setf (sym-pack sym) pack)))
-
 (defmethod zimport (sym pack)
   (check-import-conflict sym pack)
   (unless (presentp sym pack)
     (zimport-without-checks sym pack))
-  t)
-
-(defmethod check-export-conflict (sym pack)
-  (let ((sym-name (zsymbol-name sym)))
-    (dolist (using-pack (zpackage-used-by-list pack))
-      (let ((existing-sym (zfind-symbol sym-name using-pack)))
-        (when existing-sym
-          (unless (eq existing-sym sym)
-            (error "Conflict: exporting ~A conflicts with ~A in ~A"
-                   sym existing-sym using-pack)))))))
-
-(defmethod zexport (sym pack)
-  (unless (accessiblep sym pack)
-    (error "~A is not accessible in ~A"
-           sym pack))
-  (check-export-conflict sym pack)
-  (unless (presentp sym pack)
-    (zimport sym pack))
-  (tput sym (external-table pack))
-  t)
-
-(defmethod zunexport (sym pack)
-  (unless (accessiblep sym pack)
-    (error "~A is not accessible in ~A"
-           sym pack))
-  (tremove sym (external-table pack))
   t)
 
 (defmethod zintern (sym-name pack)
@@ -112,31 +154,6 @@
       (let ((sym (zmake-symbol sym-name)))
         (zimport sym pack)
         sym)))
-
-(defmethod check-unintern-conflict (sym pack)
-  (let ((sym-name (zsymbol-name sym))
-        (first-existing-sym nil))
-    (dolist (used-pack (zpackage-use-list pack))
-      (let ((existing-sym (zfind-symbol sym-name used-pack)))
-        (if first-existing-sym
-            (unless (eq existing-sym first-existing-sym)
-              (error "Conflict: uninterning ~A would lead to conflict ~
-                      between ~A and ~A"
-                     sym first-existing-sym existing-sym))
-            (setf first-existing-sym existing-sym))))))
-
-(defun zunintern-without-checks (sym pack)
-  (tremove sym (external-table pack))
-  (tremove sym (shadowing-table pack))
-  (tremove sym (present-table pack))
-  (when (eq (zsymbol-package sym) pack)
-    (setf (sym-pack sym) nil)))
-
-(defmethod zunintern (sym pack)
-  (when (accessiblep sym pack)
-    (check-unintern-conflict sym pack)
-    (zunintern-without-checks sym pack)
-    t))
 
 (defmethod zshadow (sym-name pack)
   (let ((sym (tget sym-name (present-table pack))))
@@ -159,26 +176,30 @@
            (zimport sym pack))
          (tput sym (shadowing-table pack)))))))
 
-(defmethod zpackage-shadowing-symbols (pack)
-  (tmembers (shadowing-table pack)))
+(defmethod zexport (sym pack)
+  (unless (accessiblep sym pack)
+    (error "~A is not accessible in ~A"
+           sym pack))
+  (check-export-conflict sym pack)
+  (unless (presentp sym pack)
+    (zimport sym pack))
+  (tput sym (external-table pack))
+  t)
 
-(defmacro zdo-external-symbols ((var pack) &body body)
-  `(tmap-syms (lambda (,var)
-                ,@body)
-              (external-table ,pack)))
 
-(defmethod check-inherit-conflict (used-pack using-pack)
-  (zdo-external-symbols (inherited-sym used-pack)
-    (let ((existing-sym (zfind-symbol (zsymbol-name inherited-sym)
-                                      using-pack)))
-       (when (and existing-sym
-                  (not (eq inherited-sym existing-sym))
-                  (not (shadowingp existing-sym using-pack)))
-         (error "Conflict: Inheriting ~A from ~A conflicts with ~A in ~A"
-                inherited-sym
-                used-pack
-                existing-sym
-                using-pack)))))
+(defmethod zunexport (sym pack)
+  (unless (accessiblep sym pack)
+    (error "~A is not accessible in ~A"
+           sym pack))
+  (tremove sym (external-table pack))
+  t)
+
+(defmethod zunintern (sym pack)
+  (when (accessiblep sym pack)
+    (check-unintern-conflict sym pack)
+    (zunintern-without-checks sym pack)
+    t))
+
 
 (defmethod zuse-package (pack using-pack)
   (let ((use-list (zpackage-use-list using-pack)))
@@ -195,17 +216,3 @@
   (setf (used-by-packs pack)
         (remove using-pack (zpackage-used-by-list pack)))
   t)
-
-(defmethod accessiblep (sym pack)
-  (let ((existing-sym (zfind-symbol (zsymbol-name sym) pack)))
-    (eq existing-sym sym)))
-
-(defmethod externalp (sym pack)
-  (tmember sym (external-table pack)))
-
-(defmethod shadowingp (sym pack)
-  (tmember sym (shadowing-table pack)))
-
-(defmethod presentp (sym pack)
-  (tmember sym (present-table pack)))
-
