@@ -30,8 +30,11 @@
 
 (defgeneric check-import-conflict (sym pack))
 (defgeneric check-inherit-conflict (used-pack using-pack))
-(defgeneric check-unintern-conflict (sym-name pack))
 (defgeneric check-export-conflict (sym pack))
+(defgeneric check-unintern-conflict (sym-name pack))
+
+(defgeneric zimport-without-checks (sym pack))
+(defgeneric zunintern-without-checks (sym pack))
 
 (defgeneric (setf used-packs) (used-packs pack))
 (defgeneric (setf used-by-packs) (used-by-packs pack))
@@ -42,19 +45,19 @@
 (defgeneric zsymbol-name (sym))
 (defgeneric zsymbol-package (sym))
 
-(defgeneric zfind-symbol (sym-name pack))
-(defgeneric zimport (sym pack))
-(defgeneric zintern (sym-name pack))
-(defgeneric zshadowing-import (sym pack))
-(defgeneric zexport (sym pack))
-(defgeneric zshadow (sym-name pack))
-
-(defgeneric zunexport (sym pack))
-(defgeneric zunintern (sym pack))
-
 (defgeneric zmake-package (pack-name))
 (defgeneric zfind-package (pack-name))
 (defgeneric zdelete-package (pack-name))
+
+(defgeneric zfind-symbol (sym-name pack))
+(defgeneric zimport (sym pack))
+(defgeneric zintern (sym-name pack))
+(defgeneric zshadow (sym-name pack))
+(defgeneric zshadowing-import (sym pack))
+(defgeneric zexport (sym pack))
+
+(defgeneric zunexport (sym pack))
+(defgeneric zunintern (sym pack))
 
 (defgeneric zuse-package (pack using-pack))
 (defgeneric zunuse-package (pack using-pack))
