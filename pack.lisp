@@ -70,8 +70,8 @@
 
 (defun zimport-without-checks (sym pack)
   (tput sym (present-table pack))
-    (unless (zsymbol-package sym)
-      (setf (%zsymbol-package sym) pack)))
+  (unless (zsymbol-package sym)
+    (setf (%zsymbol-package sym) pack)))
 
 (defmethod zimport (sym pack)
   (check-import-conflict sym pack)
@@ -83,9 +83,10 @@
   (let ((sym-name (zsymbol-name sym)))
     (dolist (using-pack (zpackage-used-by-list pack))
       (let ((existing-sym (zfind-symbol sym-name using-pack)))
-        (unless (eq existing-sym sym)
-          (error "Conflict: exporting ~A conflicts with ~A in ~A"
-                 sym existing-sym using-pack))))))
+        (when existing-sym
+          (unless (eq existing-sym sym)
+            (error "Conflict: exporting ~A conflicts with ~A in ~A"
+                   sym existing-sym using-pack)))))))
 
 (defmethod zexport (sym pack)
   (unless (accessiblep sym pack)
@@ -107,7 +108,7 @@
 (defmethod zintern (sym-name pack)
   (or (zfind-symbol sym-name pack)
       (let ((sym (zmake-symbol sym-name)))
-        (zimport (zmake-symbol sym-name) pack)
+        (zimport sym pack)
         sym)))
 
 (defmethod check-unintern-conflict (sym pack)
@@ -182,7 +183,8 @@
     (unless (member pack use-list)
       (check-inherit-conflict pack using-pack)
       (setf (%zpackage-use-list using-pack) (cons pack use-list))
-      (setf (%zpackage-used-by-list pack) using-pack)))
+      (setf (%zpackage-used-by-list pack)
+            (cons using-pack (zpackage-used-by-list pack)))))
   t)
 
 (defmethod zunuse-package (pack using-pack)
