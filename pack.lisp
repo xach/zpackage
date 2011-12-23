@@ -62,43 +62,48 @@
           (t
            (values nil nil)))))
 
-(defmethod zimport (sym pack)
+(defmethod check-import-conflict (sym pack)
   (let ((existing-sym (zfind-symbol (zsymbol-name sym) pack)))
     (when (and existing-sym (not (eq existing-sym sym)))
       (error "Conflict: importing ~A into ~A conflicts with ~A"
-             sym pack existing-sym))
-    ;; Why not use TENSURE here? Because of the spec of CL:IMPORT: "If
-    ;; the symbol is already present in the importing package, import
-    ;; has no effect." I interpret that to mean that it should not
-    ;; change the symbol-package of symbol, even if it's nil, when the
-    ;; symbol is already present.
-    (unless (tmember sym (present-table pack))
-      (tput sym (present-table pack))
-      (unless (zsymbol-package sym)
-        (setf (%zsymbol-package sym) pack))))
+             sym pack existing-sym))))
+
+(defmethod zimport (sym pack)
+  (check-import-conflict sym pack)
+  ;; Why not use TENSURE here? Because of the spec of CL:IMPORT: "If
+  ;; the symbol is already present in the importing package, import
+  ;; has no effect." I interpret that to mean that it should not
+  ;; change the symbol-package of symbol, even if it's nil, when the
+  ;; symbol is already present.
+  (unless (presentp sym pack)
+    (tput sym (present-table pack))
+    (unless (zsymbol-package sym)
+      (setf (%zsymbol-package sym) pack)))
   t)
+
+(defmethod check-export-conflict (sym pack)
+  (let ((sym-name (zsymbol-name sym)))
+    (dolist (using-pack (zpackage-used-by-list pack))
+      (let ((existing-sym (zfind-symbol sym-name using-pack)))
+        (unless (eq existing-sym sym)
+          (error "Conflict: exporting ~A conflicts with ~A in ~A"
+                 sym existing-sym using-pack))))))
 
 (defmethod zexport (sym pack)
   (unless (accessiblep sym pack)
     (error "~A is not accessible in ~A"
            sym pack))
-  ;; Check for possible conflicts
-  (let ((name (zsymbol-name sym)))
-    (dolist (using-pack (zpackage-used-by-list pack))
-      (let ((existing-sym (zfind-symbol name using-pack)))
-        (unless (eq existing-sym sym)
-          (error "Conflict: exporting ~A conflicts with ~A in ~A"
-                 sym existing-sym using-pack)))))
-  ;; No conflicts
+  (check-export-conflict sym pack)
   (unless (presentp sym pack)
     (zimport sym pack))
-  (setf (externalp sym pack) t))
+  (tensure sym (external-table pack))
+  t)
 
 (defmethod zunexport (sym pack)
   (unless (accessiblep sym pack)
     (error "~A is not accessible in ~A"
            sym pack))
-  (setf (externalp sym pack) nil)
+  (tremove-if-member sym (external-table pack))
   t)
 
 (defmethod zintern (sym-name pack)
@@ -107,81 +112,100 @@
         (zimport (zmake-symbol sym-name) pack)
         sym)))
 
+(defmethod check-unintern-conflict (sym pack)
+  (let ((sym-name (zsymbol-name sym))
+        (first-existing-sym nil))
+    (dolist (used-pack (zpackage-use-list pack))
+      (let ((existing-sym (zfind-symbol sym-name used-pack)))
+        (if first-existing-sym
+            (unless (eq existing-sym first-existing-sym)
+              (error "Conflict: uninterning ~A would lead to conflict ~
+                      between ~A and ~A"
+                     sym first-existing-sym existing-sym))
+            (setf first-existing-sym existing-sym))))))
+
+(defun zunintern-without-checks (sym pack)
+  (tremove-if-member sym (external-table pack))
+  (tremove-if-member sym (shadowed-table pack))
+  (tremove-if-member sym (present-table pack))
+  (when (eq (symbol-package sym) pack)
+    (setf (%zsymbol-package sym) nil)))
+
 (defmethod zunintern (sym pack)
   (when (accessiblep sym pack)
-    ;; Check for conflicts; are there any two used packages with EQUAL
-    ;; names that are not EQ?
-    (let ((name (zsymbol-name sym))
-          (first-existing-sym nil))
-      (dolist (used-pack (zpackage-use-list pack))
-        (let ((existing-sym (zfind-symbol name used-pack)))
-          (if first-existing-sym
-              (unless (eq existing-sym first-existing-sym)
-                (error "Conflict: uninterning ~A would lead to conflict ~
-                      between ~A and ~A"
-                       sym first-existing-sym existing-sym))
-              (setf first-existing-sym existing-sym)))))
-    ;; No conflict
-    (setf (externalp sym pack) nil)
-    (setf (shadowedp sym pack) nil)
-    (setf (presentp sym pack) nil)
-    (setf (%zsymbol-package pack) nil)
+    (check-unintern-conflict sym pack)
+    (zunintern-without-checks sym pack)
     t))
 
 (defmethod zshadow (sym-name pack)
   (multiple-value-bind (existing-sym type)
       (zfind-symbol sym-name pack)
-    (ecase type
-      ((nil)
-       (let ((sym (zmake-symbol sym-name)))
-         (zimport sym pack)
-         (setf (shadowedp sym pack) t)))
-      ((:inherited)
-       (zimport existing-sym pack)
-       (setf (shadowedp existing-sym pack) t))
-      ((:internal :external)
-       (setf (shadowedp existing-sym pack) t)))
+    (cond ((null type)
+           (let ((sym (zmake-symbol sym-name)))
+             (zimport sym pack)
+             (setf (shadowedp sym pack) t)))
+          (t
+           (when (eql type :inherited)
+             (zimport existing-sym pack))
+           (tensure existing-sym (shadowed-table pack))))
     t))
 
 (defmethod zshadowing-import (sym pack)
-  (let ((name (zsymbol-name sym)))
+  (let ((sym-name (zsymbol-name sym)))
     (multiple-value-bind (existing-sym type)
-        (zfind-symbol name pack)
+        (zfind-symbol sym-name pack)
       (ecase type
         ((nil :inherited)
-         (zshadow name pack))
+         (zshadow sym-name pack))
         ((:external :internal)
-         (setf (shadowedp existing-sym pack) nil)
-         (setf (externalp existing-sym pack) nil)
-         (setf (presentp existing-sym pack) nil)
-         (zimport sym pack)
-         (zshadow sym pack))))))
+         (unless (eq existing-sym sym)
+           (zunintern-without-checks existing-sym pack)
+           (zimport sym pack))
+         (tensure sym (shadowed-table pack)))))))
+
+(defmacro zdo-external-symbols ((var pack) &body body)
+  `(tmap-syms (lambda (,var)
+                ,@body)
+              (external-table ,pack)))
+
+(defmethod check-inherit-conflict (used-pack using-pack)
+  (zdo-external-symbols (inherited-sym used-pack)
+    (let ((existing-sym (zfind-symbol (zsymbol-name inherited-sym)
+                                      using-pack)))
+       (when (and existing-sym
+                  (not (eq inherited-sym existing-sym))
+                  (not (shadowedp existing-sym using-pack)))
+         (error "Conflict: Inheriting ~A from ~A conflicts with ~A in ~A"
+                inherited-sym
+                used-pack
+                existing-sym
+                using-pack)))))
+
+(defmethod zuse-package (pack using-pack)
+  (let ((use-list (zpackage-use-list using-pack)))
+    (unless (member pack use-list)
+      (check-inherit-conflict pack using-pack)
+      (setf (%zpackage-use-list using-pack) (cons pack use-list))
+      (setf (%zpackage-used-by-list pack) using-pack)))
+  t)
+
+(defmethod zunuse-package (pack using-pack)
+  (setf (%zpackage-use-list using-pack)
+        (remove pack (zpackage-use-list using-pack)))
+  (setf (%zpackage-used-by-list pack)
+        (remove using-pack (zpackage-used-by-list pack)))
+  t)
 
 (defmethod accessiblep (sym pack)
   (let ((existing-sym (zfind-symbol (zsymbol-name sym) pack)))
     (eq existing-sym sym)))
 
-(defmethod inheritedp (sym pack)
-  (eql (nth-value 1 (zfind-symbol (zsymbol-name sym) pack))
-       :inherited))
+(defmethod externalp (sym pack)
+  (tmember sym (external-table pack)))
 
 (defmethod shadowedp (sym pack)
   (tmember sym (shadowed-table pack)))
 
-(defmethod (setf shadowedp) (new-value sym pack)
-  (let ((table (shadowed-table pack)))
-    (if new-value
-        (tensure sym table)
-        (tremove-if-member sym table))))
+(defmethod presentp (sym pack)
+  (tmember sym (present-table pack)))
 
-(defmethod (setf externalp) (new-value sym pack)
-  (let ((table (external-table pack)))
-    (if new-value
-        (tensure sym table)
-        (tremove-if-member sym table))))
-
-(defmethod (setf presentp) (new-value sym pack)
-  (let ((table (present-table pack)))
-    (if new-value
-        (tensure sym table)
-        (tremove-if-member sym table))))
