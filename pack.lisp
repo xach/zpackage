@@ -2,6 +2,8 @@
 
 (in-package #:zpackage)
 
+(defvar *packs* (make-hash-table :test 'equal))
+
 (defclass pack ()
   ((name
     :initarg :name
@@ -18,11 +20,11 @@
    (used-packs
     :initarg :used-packs
     :reader zpackage-use-list
-    :writer (setf %zpackage-use-list))
+    :writer (setf used-packs))
    (used-by-packs
     :initarg :used-by-packs
     :reader zpackage-used-by-list
-    :writer (setf %zpackage-used-by-list)))
+    :writer (setf used-by-packs)))
   (:default-initargs
    :external-table (make-sym-table)
    :present-table (make-sym-table)
@@ -182,15 +184,15 @@
   (let ((use-list (zpackage-use-list using-pack)))
     (unless (member pack use-list)
       (check-inherit-conflict pack using-pack)
-      (setf (%zpackage-use-list using-pack) (cons pack use-list))
-      (setf (%zpackage-used-by-list pack)
+      (setf (used-packs using-pack) (cons pack use-list))
+      (setf (used-by-packs pack)
             (cons using-pack (zpackage-used-by-list pack)))))
   t)
 
 (defmethod zunuse-package (pack using-pack)
-  (setf (%zpackage-use-list using-pack)
+  (setf (used-packs using-pack)
         (remove pack (zpackage-use-list using-pack)))
-  (setf (%zpackage-used-by-list pack)
+  (setf (used-by-packs pack)
         (remove using-pack (zpackage-used-by-list pack)))
   t)
 
