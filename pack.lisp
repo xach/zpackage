@@ -128,7 +128,7 @@
   (tremove sym (shadowing-table pack))
   (tremove sym (present-table pack))
   (when (eq (zsymbol-package sym) pack)
-    (setf (%zsymbol-package sym) nil)))
+    (setf (sym-pack sym) nil)))
 
 (defmethod zunintern (sym pack)
   (when (accessiblep sym pack)
