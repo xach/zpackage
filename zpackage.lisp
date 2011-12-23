@@ -29,8 +29,10 @@
 (defgeneric zpackage-use-list (pack))
 (defgeneric zpackage-used-by-list (pack))
 
-;;; Needed for implementation
-(defgeneric (setf %zsymbol-package) (new-pack sym))
+;;; Symbol internal management
+(defgeneric sym-pack (sym))
+(defgeneric (setf sym-pack) (pack sym))
+
 (defgeneric (setf %zpackage-use-list) (new-list pack))
 (defgeneric (setf %zpackage-used-by-list) (new-list pack))
 

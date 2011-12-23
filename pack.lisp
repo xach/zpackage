@@ -71,7 +71,7 @@
 (defun zimport-without-checks (sym pack)
   (tput sym (present-table pack))
   (unless (zsymbol-package sym)
-    (setf (%zsymbol-package sym) pack)))
+    (setf (sym-pack sym) pack)))
 
 (defmethod zimport (sym pack)
   (check-import-conflict sym pack)

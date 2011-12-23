@@ -9,7 +9,7 @@
    (pack
     :initarg :pack
     :reader zsymbol-package
-    :writer (setf %zsymbol-package)))
+    :accessor sym-pack))
   (:default-initargs
    :pack nil))
 
