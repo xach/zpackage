@@ -15,15 +15,15 @@
 (defmethod tget (sym-name table)
   (values (gethash sym-name (name-table table))))
 
-(defmethod tmember (sym table)
-  (let ((entry (tget (zsymbol-name sym) table)))
-    (eq entry sym)))
-
 (defmethod tput (sym table)
   (setf (gethash (zsymbol-name sym) (name-table table)) sym))
 
 (defmethod tremove (sym table)
   (remhash (zsymbol-name sym) (name-table table)))
+
+(defmethod tmember (sym table)
+  (let ((entry (tget (zsymbol-name sym) table)))
+    (eq entry sym)))
 
 (defmethod tmap-syms (fun table)
   (maphash (lambda (sym-name sym)
